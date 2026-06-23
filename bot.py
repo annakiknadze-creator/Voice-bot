@@ -13,7 +13,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from content import BLOCKS, VOCAL_BLOCKS, DAILY_TIPS, INTRO_TEXT, SPEECH_INTRO_TEXT, VOCAL_INTRO_TEXT
+from content import BLOCKS, VOCAL_BLOCKS, DAILY_TIPS, INTRO_TEXT, SPEECH_INTRO_TEXT, VOCAL_INTRO_TEXT, TONGUE_TWISTERS
 from database import (
     get_diary,
     get_progress,
@@ -46,6 +46,7 @@ def speech_menu_keyboard(progress: dict) -> InlineKeyboardMarkup:
         label = BLOCKS[i]["title"]
         icon = "✅" if (done and check) else ("🔄" if done else "📌")
         buttons.append([InlineKeyboardButton(f"{icon} {label}", callback_data=f"block_{i}")])
+    buttons.append([InlineKeyboardButton("📜 100 скороговорок", callback_data="tt_page_0")])
     buttons.append([InlineKeyboardButton("📓 Мой дневник", callback_data="diary")])
     buttons.append([InlineKeyboardButton("💡 Совет дня", callback_data="tip")])
     buttons.append([InlineKeyboardButton("🔙 Выбор раздела", callback_data="choose_mode")])
@@ -60,11 +61,11 @@ def vocal_menu_keyboard(progress: dict) -> InlineKeyboardMarkup:
         label = VOCAL_BLOCKS[i]["title"]
         icon = "✅" if (done and check) else ("🔄" if done else "📌")
         buttons.append([InlineKeyboardButton(f"{icon} {label}", callback_data=f"vblock_{i}")])
+    buttons.append([InlineKeyboardButton("📜 100 скороговорок", callback_data="tt_page_0")])
     buttons.append([InlineKeyboardButton("📓 Мой дневник", callback_data="diary")])
     buttons.append([InlineKeyboardButton("💡 Совет дня", callback_data="tip")])
     buttons.append([InlineKeyboardButton("🔙 Выбор раздела", callback_data="choose_mode")])
     return InlineKeyboardMarkup(buttons)
-
 
 def block_menu_keyboard(block_num: int, progress: dict, prefix: str = "") -> InlineKeyboardMarkup:
     blocks = VOCAL_BLOCKS if prefix == "v" else BLOCKS
@@ -216,18 +217,46 @@ async def timer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ex_idx = int(parts[2])
     minutes = int(parts[3])
     seconds = minutes * 60
-    await query.edit_message_text(
-        f"⏱ *Таймер запущен: {minutes} мин*\n\nВыполняйте упражнение...\nБот уведомит вас, когда время выйдет.",
+    timer_msg = await query.message.reply_text(
+        f"⏱ *Таймер: {minutes} мин*\n\nВыполняйте упражнение...\nБот уведомит вас, когда время выйдет.",
         parse_mode=ParseMode.MARKDOWN)
     await asyncio.sleep(seconds)
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("← Вернуться к упражнению",
                                                             callback_data=f"{prefix}ex_{block_num}_{ex_idx}")]])
     try:
-        await query.message.reply_text(
-            "✅ *Время вышло!* Упражнение завершено.\n\nОтличная работа!",
+        await timer_msg.edit_text(
+            "✅ *Время вышло!* Упражнение завершено.\n\nОтличная работа! 💪",
             parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
     except Exception:
         pass
+
+
+TT_PAGE_SIZE = 10
+
+
+async def tongue_twisters_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    page = int(query.data.split("_")[-1])
+    total = len(TONGUE_TWISTERS)
+    total_pages = (total + TT_PAGE_SIZE - 1) // TT_PAGE_SIZE
+    start = page * TT_PAGE_SIZE
+    end = min(start + TT_PAGE_SIZE, total)
+    items = TONGUE_TWISTERS[start:end]
+    text = f"📜 *100 скороговорок* — стр. {page + 1}/{total_pages}\n\n"
+    for i, tt in enumerate(items, start=start + 1):
+        text += f"{i}. {tt}\n\n"
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️ Назад", callback_data=f"tt_page_{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("Вперёд ▶️", callback_data=f"tt_page_{page + 1}"))
+    buttons = []
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")])
+    await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN,
+                                   reply_markup=InlineKeyboardMarkup(buttons))
 
 
 async def done_block_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,6 +411,7 @@ def main():
     app.add_handler(CallbackQueryHandler(diary_rating_callback, pattern=r"^diary_(great|good|hard)$"))
     app.add_handler(CallbackQueryHandler(diary_callback, pattern="^diary$"))
     app.add_handler(CallbackQueryHandler(tip_callback, pattern="^tip$"))
+    app.add_handler(CallbackQueryHandler(tongue_twisters_callback, pattern=r"^tt_page_\d+$"))
 
     logger.info("Бот запущен...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
